@@ -30,6 +30,7 @@ Function Restart-HYDHandover {
     $Null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name AutoLogonCount -Value 1 -Force
     $Null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name DefaultUserName -Value "$DefaultUserName" -Force
     $Null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name DefaultPassword -Value "$DefaultPassword" -Force
+    $Null = New-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -Name Run -Value "PowerShell.exe -ExecutionPolicy Bypass -File $($Global:RootFolder)\BuildServer.ps1" -Force -PropertyType ExpandString
 
     Write-Verbose "Rebooting, see you on the other side"
 
@@ -191,7 +192,19 @@ function Get-NetworkPrefix {
 $ServerPrefix = Get-NetworkPrefix $IPAddress
 $DnsPrefixes = $DNSServers | ForEach-Object { Get-NetworkPrefix $_ } | Sort-Object -Unique
 
-if ($DnsPrefixes -contains $ServerPrefix) {
+if ([string]::IsNullOrEmpty($DnsPrefixes)) {
+    "DnsPrefixes is null!"
+    pause
+    break
+}
+if ([string]::IsNullOrEmpty($ServerPrefix)) {
+    "ServerPrefix is null!"
+    pause
+    break
+}
+
+# First dc => rename
+if ($DnsPrefixes -contains $ServerPrefix -and $Hostname -ne "ADDS-01") {
 
     "[$(Get-Date)] Domain Join" | Out-File -FilePath $LogFile -Append
 
