@@ -19,7 +19,7 @@ if (!((gwmi win32_computersystem).partofdomain)) {
 }
 
 
-if ((gwmi win32_computersystem).partofdomain) {
+if ((Get-CimInstance win32_computersystem).partofdomain) {
 
     # Install ADDS & DNS
     # --------------------------------------------------------------------------------------------------
@@ -29,7 +29,7 @@ if ((gwmi win32_computersystem).partofdomain) {
 
 
     #if ((Get-ADDomain).ReplicaDirectoryServers -NotContains "$($ENV:Computername).$($ENV:USERDNSDOMAIN)") {
-    if ((gwmi win32_computersystem).DomainRole -ne 4) {
+    if ((Get-CimInstance win32_computersystem).DomainRole -ne 4) {
 
         # Gennerate Safe Mode Password.
         # ------------------------------------------------------------
@@ -108,5 +108,7 @@ if ((gwmi win32_computersystem).partofdomain) {
 
     # Script done, close console connection.
     # --------------------------------------------------------------------------------------------------
+    "Logoff?"
+    pause
     Logoff
 }

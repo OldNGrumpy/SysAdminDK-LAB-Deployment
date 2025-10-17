@@ -25,6 +25,13 @@
 
 #>
 
+$TierSearchBase = @()
+(Get-ADOrganizationalUnit -Filter * | Where-Object { $_.DistinguishedName -like '*OU=Tier*' }).DistinguishedName | ForEach-Object {
+    $_ -match '.+Tier(?<Tier>.+)' | Out-Null
+    $TierSearchBase += $Matches.Tier.Substring($Matches.Tier.IndexOf(',')+1)
+}
+$TierSearchBase = $TierSearchBase | select -Unique -First 1
+
 # Select Destination OU
 # ------------------------------------------------------------
 $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | `
@@ -34,7 +41,7 @@ $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | 
 
 # Install & Configure 
 # ------------------------------------------------------------
-$($ServerInfo | Where {$_.Role -eq "MFA"}).Name | Get-ADComputer -ErrorAction SilentlyContinue | Foreach {
+Get-ADComputer -Identity $env:COMPUTERNAME -ErrorAction SilentlyContinue | Foreach {
 
     # Move MFA server to Tier 1
     # ------------------------------------------------------------
@@ -42,11 +49,6 @@ $($ServerInfo | Where {$_.Role -eq "MFA"}).Name | Get-ADComputer -ErrorAction Si
         Move-ADObject -Identity $($_.DistinguishedName) -TargetPath $TargetPath.DistinguishedName
     }
 
-
-    # Connect to the server.
-    # ------------------------------------------------------------
-    $Session = New-PSSession -ComputerName "$($_.DNSHostName)"
-    
 
     # Copy required installers to target server
     # ------------------------------------------------------------
@@ -60,9 +62,6 @@ $($ServerInfo | Where {$_.Role -eq "MFA"}).Name | Get-ADComputer -ErrorAction Si
     }
 
 
-    # Execute commands.
-    # ------------------------------------------------------------
-    Invoke-Command -Session $Session -ScriptBlock {
 
         # Install Azure Arc Agent
         # ------------------------------------------------------------
@@ -87,6 +86,7 @@ $($ServerInfo | Where {$_.Role -eq "MFA"}).Name | Get-ADComputer -ErrorAction Si
 
         # Configure Radius Clients
         # ------------------------------------------------------------
+<#
         $($Using:ServerInfo | Where {$_.Role -eq "RDGW"}) | Foreach {
             $ServerName = $_.Name
             $IPAddress = (Resolve-DnsName -Name "$ServerName.$($ENV:UserDNSDomain)" -Type A)[0].IPAddress #"$($_).$($ENV:UserDNSDomain)"
@@ -94,7 +94,7 @@ $($ServerInfo | Where {$_.Role -eq "MFA"}).Name | Get-ADComputer -ErrorAction Si
                 New-NpsRadiusClient -Name $ServerName -Address $IPAddress -SharedSecret $Using:NPSSharedSecret -AuthAttributeRequired 1 | Out-Null
             }
         }
-
+#>
 
         <#
 
@@ -273,33 +273,27 @@ $($ServerInfo | Where {$_.Role -eq "MFA"}).Name | Get-ADComputer -ErrorAction Si
         # Cleanup files.
         # ------------------------------------------------------------
         Get-ChildItem -Path "$($ENV:PUBLIC)\downloads" -Recurse | Remove-Item
-    }
 }
 
 
 
-$($ServerInfo | Where {$_.Role -eq "MFA"}).Name | Get-ADComputer -ErrorAction SilentlyContinue | Foreach {
 
-    # Connect to the server.
-    # ------------------------------------------------------------
-    Invoke-Command -ComputerName "$($_.DNSHostName)" -ScriptBlock {
+# Setup MFA
+# ------------------------------------------------------------
+if (Test-Path -Path "C:\Program Files\Microsoft\AzureMfa\Config") {
+    Set-Location -Path "C:\Program Files\Microsoft\AzureMfa\Config"
 
-        # Setup MFA
-        # ------------------------------------------------------------
-        if (Test-Path -Path "C:\Program Files\Microsoft\AzureMfa\Config") {
-            Set-Location -Path "C:\Program Files\Microsoft\AzureMfa\Config"
+    Connect-MgGraph -Scopes Application.ReadWrite.All -NoWelcome -UseDeviceCode -Verbose
+    New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\AzureMfa -Name "TENANT_ID" -Value (Get-MgContext).TenantId -Force -PropertyType STRING
 
-            Connect-MgGraph -Scopes Application.ReadWrite.All -NoWelcome -UseDeviceCode -Verbose
-            New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\AzureMfa -Name "TENANT_ID" -Value (Get-MgContext).TenantId -Force -PropertyType STRING
+    & .\AzureMfaNpsExtnConfigSetup.ps1
 
-            & .\AzureMfaNpsExtnConfigSetup.ps1
-
-            New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\AzureMfa -Name "OVERRIDE_NUMBER_MATCHING_WITH_OTP" -Value FALSE -Force -PropertyType STRING | Out-Null
-        }
-
-
-        # Reboot to activate all the changes.
-        # ------------------------------------------------------------
-        Restart-Computer -Force
-    }
+    New-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\AzureMfa -Name "OVERRIDE_NUMBER_MATCHING_WITH_OTP" -Value FALSE -Force -PropertyType STRING | Out-Null
 }
+
+
+# Reboot to activate all the changes.
+# ------------------------------------------------------------
+"Reboot?"
+pause
+Restart-Computer -Force

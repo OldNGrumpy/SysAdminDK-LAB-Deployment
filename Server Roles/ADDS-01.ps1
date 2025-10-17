@@ -19,7 +19,7 @@
 #>
 # Find Media Drive.
 # ------------------------------------------------------------
-$MediaDrives = Get-WmiObject -Class Win32_volume -Filter "DriveType = '5'"
+$MediaDrives = Get-CimInstance -Class Win32_volume -Filter "DriveType = '5'"
 foreach ($MediaDrive in $MediaDrives) {
 
     # Get content from User Data 
@@ -135,7 +135,7 @@ if (!((gwmi win32_computersystem).partofdomain)) {
 #>
 # Run after Domain have been created.
 # --------------------------------------------------------------------------------------------------
-if ((gwmi win32_computersystem).DomainRole -eq 5) {
+if ((Get-CimInstance win32_computersystem).DomainRole -eq 5) {
 
 
     # Get current network configuration
@@ -166,7 +166,7 @@ if ((gwmi win32_computersystem).DomainRole -eq 5) {
     # --------------------------------------------------------------------------------------------------
     if ($ADTieringFile) { 
         if (Test-Path -Path "$($ENV:USERPROFILE)\Downloads") {
-            Expand-Archive -Path $ADTieringFile -DestinationPath "$($ENV:USERPROFILE)\Downloads"
+            Expand-Archive -Path $ADTieringFile.FullName -DestinationPath "$($ENV:USERPROFILE)\Downloads"
         }
 
         Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force -Confirm:0
@@ -177,7 +177,7 @@ if ((gwmi win32_computersystem).DomainRole -eq 5) {
 
         # Create Fabric OUs
         Import-Module "$($ENV:USERPROFILE)\Downloads\ADTiering\TSxTieringModule\TSxTieringModule.psm1" -Force
-        New-TSxSubOU -Tier T0 -Name "DeployentServers" -Description 'Tier0 - Deployment Server' -TierOUName Admin -CompanyName NA -WindowsLAPSOnly -Cleanup
+        New-TSxSubOU -Tier T0 -Name "DeploymentServers" -Description 'Tier0 - Deployment Server' -TierOUName Admin -CompanyName NA -WindowsLAPSOnly -Cleanup
         New-TSxSubOU -Tier T0 -Name "AzureLocalServers" -Description 'Tier0 - Azure Local Servers' -TierOUName Admin -CompanyName NA -WindowsLAPSOnly -Cleanup
         New-TSxSubOU -Tier T1 -Name "RemoteDesktopGatewayServers" -Description 'Tier1 - Remote Desktop Gateway Servers' -TierOUName Admin -CompanyName NA -WindowsLAPSOnly -Cleanup
         New-TSxSubOU -Tier T1 -Name "RemoteDesktopMFAServers" -Description 'Tier1 - Remote Desktop MFA Servers' -TierOUName Admin -CompanyName NA -WindowsLAPSOnly -Cleanup
@@ -289,7 +289,7 @@ if ((gwmi win32_computersystem).DomainRole -eq 5) {
     # --------------------------------------------------------------------------------------------------
     $MediaDrives = Get-WmiObject -Class Win32_volume -Filter "DriveType = '5'"
     foreach ($MediaDrive in $MediaDrives) {
-        if (Test-Path -Path "$MediaDrive\Windows DSC") {
+        if (Test-Path -Path "$($MediaDrive.DriveLetter)\Windows DSC") {
 
             # Make DSC folders in Netlogon
             # --------------------------------------------------------------------------------------------------
@@ -300,7 +300,7 @@ if ((gwmi win32_computersystem).DomainRole -eq 5) {
 
             # Find all mof files.
             # --------------------------------------------------------------------------------------------------
-            $DSCFiles = (Get-ChildItem -Path "$MediaDrive\Windows DSC" -Recurse -Filter "*.mof")
+            $DSCFiles = (Get-ChildItem -Path "$($MediaDrive.DriveLetter)\Windows DSC" -Recurse -Filter "*.mof")
             $DSCFiles | ForEach-Object {
                 Copy-Item $_.FullName -Destination "$($env:SystemRoot)\SYSVOL\domain\scripts\Windows DSC"
             }
@@ -351,7 +351,10 @@ if ((gwmi win32_computersystem).DomainRole -eq 5) {
     }
 
 
-    # Script done, close console connection.
+    # Script done, cleanup and close console connection.
     # --------------------------------------------------------------------------------------------------
+    if (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "Resume BootStrap" -ErrorAction SilentlyContinue) {
+        Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "Resume BootStrap" -Force | Out-Null
+    }
     Logoff
 }

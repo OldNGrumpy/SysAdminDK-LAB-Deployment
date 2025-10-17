@@ -32,12 +32,26 @@
 
 #>
 
+if (!(get-module -Name ActiveDirectory -ListAvailable)) {
+    Install-WindowsFeature -Name "RSAT-AD-PowerShell" -IncludeAllSubFeature
+}
+try {
+    Import-Module -Name ActiveDirectory -ErrorAction Stop
+}
+catch {
+    Write-Error "Needs AD module!"
+    pause
+    return
+}
 
 # Define Default SearchBase for this script
 # ------------------------------------------------------------
-$TierSearchBase = (Get-ADOrganizationalUnit -Filter "Name -like '*$TierOUName*'" -SearchScope OneLevel).DistinguishedName
-
-
+$TierSearchBase = @()
+(Get-ADOrganizationalUnit -Filter * | Where-Object { $_.DistinguishedName -like '*OU=Tier*' }).DistinguishedName | ForEach-Object {
+    $_ -match '.+Tier(?<Tier>.+)' | Out-Null
+    $TierSearchBase += $Matches.Tier.Substring($Matches.Tier.IndexOf(',')+1)
+}
+$TierSearchBase = $TierSearchBase | Select-Object -Unique -First 1
 
 <#
 
@@ -47,22 +61,22 @@ $TierSearchBase = (Get-ADOrganizationalUnit -Filter "Name -like '*$TierOUName*'"
 
 # Check to see if we need to Skip this and install CA manualy
 # ------------------------------------------------------------
-if (($($ServerInfo | Where {$_.Role -eq "CA"}).Name | Get-ADComputer -ErrorAction SilentlyContinue).Count -gt 1) {
 
-    Throw "Multiple CA servers, make sure the Root is avalible prior to installing the Issuing CAs"
+if ((Get-ADComputer -Filter "name -like '*ADCA*'" -SearchBase $TierSearchBase -ErrorAction SilentlyContinue).Count -gt 0) {
+
+    Throw "CA servers found in AD tier, please install manually"
 
 }
 
 
 $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | `
-    Where {$_.DistinguishedName -like "OU=*OU=Servers,OU=Tier0,$TierSearchBase"}) | `
+    Where-Object {$_.DistinguishedName -like "OU=*OU=Servers,OU=Tier0,$TierSearchBase"}) | `
         Select-Object Name,DistinguishedName | Out-GridView -Title "Select Destination OU" -OutputMode Single
 
 
 # Install & Configure 
 # ------------------------------------------------------------
-($($ServerInfo | Where {$_.Role -eq "CA"}).Name | Get-ADComputer -ErrorAction SilentlyContinue)[0] | Foreach {
-
+Get-ADComputer -Identity $env:COMPUTERNAME -ErrorAction SilentlyContinue | Foreach {
 
     # Move the CA server to Tier 0
     # ------------------------------------------------------------
@@ -77,25 +91,8 @@ $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | 
     New-ADGroup -Name "AutoEnrol Certificate - Web Servers" -GroupCategory Security -GroupScope DomainLocal -Path $GroupOU
     New-ADGroup -Name "AutoEnrol Certificate - RD Servers" -GroupCategory Security -GroupScope DomainLocal -Path $GroupOU
 
-
-    # Connect to the server.
-    # ------------------------------------------------------------
-    $Session = New-PSSession -ComputerName "$($_.DNSHostName)"
-
     # Copy required installers to target server
     # ------------------------------------------------------------
-    $FilesToCopy = @(
-        "AzureConnectedMachineAgent.msi"
-    )
-
-    $FilesToCopy | Foreach {
-        Get-ChildItem -Path $TxScriptPath -Filter $_ -Recurse | Copy-Item -Destination "$($ENV:PUBLIC)\downloads\$_" -ToSession $Session -Force
-    }
-
-
-    # Execute commands.
-    # ------------------------------------------------------------
-    Invoke-Command -Session $Session -ScriptBlock {
 
         # Install Azure Arc Agent
         # ------------------------------------------------------------
@@ -114,7 +111,7 @@ $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | 
         Install-AdcsCertificationAuthority `
             -CAType "EnterpriseRootCA" `
             -HashAlgorithmName "SHA256" `
-            -KeyLength "2048" `
+            -KeyLength "4096" `
             -ValidityPeriod Years `
             -ValidityPeriodUnits 10 `
             -CACommonName "$($ENV:UserDomain) Enterprise Certification Authority" `
@@ -141,13 +138,11 @@ $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | 
         $TemplatesToRemove = @("User", "Machine", "WebServer", "EFS", "EFSRecovery", "SubCa")
         Get-CATemplate | Where {$_.Name -in $TemplatesToRemove} | Remove-CATemplate -Force
 
-
-
         # ------------------------------------------------------------
         # Create NPS & Web Server Certificate templates
         # ------------------------------------------------------------
         #throw "Remote Desktop Server Certificate template"
-<#
+
         $AddTemplateScript = @()
         $AddTemplateScript += "if (!(Get-CATemplate | Where {`$_.Name -eq `"RASAndIASServer`"})) {"
         $AddTemplateScript += "    Add-CATemplate -Name `"RASAndIASServer`" -Confirm:`$False"
@@ -169,7 +164,6 @@ $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | 
         $ScheduledTask.triggers[0].EndBoundary  = (Get-Date).AddSeconds(30).ToString("s")
         $ScheduledTask.Settings.DeleteExpiredTaskAfter = "PT0S"
         Register-ScheduledTask -TaskName "Add Templates" -InputObject $ScheduledTask | Out-Null
-#>
 
         # Cleanup files.
         # ------------------------------------------------------------
@@ -183,20 +177,17 @@ $TargetPath = (Get-ADOrganizationalUnit -Filter * -SearchBase $TierSearchBase | 
         # ------------------------------------------------------------
         # Reboot to activate all the changes.
         # ------------------------------------------------------------
+        "Reboot?"
+        pause
         Restart-Computer -Force
-    }
 }
-
-
-# Cleanup Session
-# ------------------------------------------------------------
-Get-PSSession $Session.Id | Remove-PSSession
 
 
 # ------------------------------------------------------------
 # Set ACLs on certificates.
 # ------------------------------------------------------------
-## DSACLS "CN=RASAndIASServer,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,$((Get-ADDomain).DistinguishedName)" /G "RAS And IAS Servers:CA;AutoEnrollment" # | Out-Null
-## DSACLS "CN=WebServer,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,$((Get-ADDomain).DistinguishedName)" /G "AutoEnrol Certificate - Web Servers:CA;Enroll" # | Out-Null
-
+<#
+DSACLS "CN=RASAndIASServer,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,$((Get-ADDomain).DistinguishedName)" /G "RAS And IAS Servers:CA;AutoEnrollment" # | Out-Null
+DSACLS "CN=WebServer,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,$((Get-ADDomain).DistinguishedName)" /G "AutoEnrol Certificate - Web Servers:CA;Enroll" # | Out-Null
+#>
 #endregion

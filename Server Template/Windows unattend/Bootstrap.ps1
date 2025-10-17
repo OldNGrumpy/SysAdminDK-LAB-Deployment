@@ -10,6 +10,43 @@
                                                                                                   |_| 
 #>
 
+Function Restart-HYDHandover {
+    Param(
+        $LogonUserName,
+        $LogonPassword
+    )
+    Write-Verbose "Prep for reboot"
+    Write-Verbose "Rebooting to Local Account"
+    $DefaultUserName = "Administrator"
+    if ($LogonUserName) {
+        $DefaultUserName = $LogonUserName
+    }
+    $DefaultPassword = "Password,2025!"
+    if ($LogonPassword) {
+        $DefaultPassword = $LogonPassword
+    }
+
+    $Null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name AutoAdminLogon -Value 1 -Force
+    $Null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name AutoLogonCount -Value 1 -Force
+    $Null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name DefaultUserName -Value "$DefaultUserName" -Force
+    $Null = New-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' -Name DefaultPassword -Value "$DefaultPassword" -Force
+
+    Write-Verbose "Rebooting, see you on the other side"
+
+    if ($global:HDebug) {
+        Pause
+    }
+
+    Start-Sleep -Seconds 5
+    & Shutdown.exe /r /t 5 /f
+    Start-Sleep -Seconds 300
+}
+
+$RunMe = Read-Host -Prompt "Type y to run"
+
+if ($RunMe -ne "y") {
+    break
+}
 
 # Start logging.
 # ------------------------------------------------------------
@@ -19,11 +56,16 @@ $LogFile = "$($ENV:SystemRoot)\Temp\Bootstrap.log"
 
 # Find Media Drive.
 # ------------------------------------------------------------
-$MediaDrives = Get-WmiObject -Class Win32_volume -Filter "DriveType = '5'"
+$MediaDrives = Get-CimInstance -Class Win32_volume -Filter "DriveType = '5'"
 foreach ($MediaDrive in $MediaDrives) {
 
     "[$(Get-Date)] Checking $($Mediadrive.name)" | Out-File -FilePath $LogFile -Append
 
+    if ((Test-Path -Path "$($MediaDrive.Name)Bootstrap.ps1" )) {
+        "[$(Get-Date)] Found Bootstrap.ps1 at $($Mediadrive.name)" | Out-File -FilePath $LogFile -Append
+        & "$($MediaDrive.Name)Bootstrap.ps1"
+        exit
+    }
 
     # Get content from NetConfig file
     # ------------------------------------------------------------
@@ -98,7 +140,16 @@ foreach ($MediaDrive in $MediaDrives) {
         # ------------------------------------------------------------
         $RunAtStartupFile = Get-ChildItem -Path $MediaDrive.Name -Recurse -Filter "$HostName.ps1" -ErrorAction SilentlyContinue
         if (!($RunAtStartupFile)) {
-            $FileSearch = "$(($HostName -split("-"))[0])-0x"
+            $tmpArr = $HostName -split("-")
+            if ($tmpArr.Count -gt 2) {
+                $FileSearch = "$($tmpArr[1])-0x"
+            }
+            else {
+                $FileSearch = "$($tmpArr[0])-0x"
+            }
+            if ($FileSearch.Substring(0,5) -eq "ADDS-" -and $HostName -like "*$($FileSearch.Substring(0,5) + "01")*") {
+                $FileSearch = "ADDS-01"
+            }
             $RunAtStartupFile = Get-ChildItem -Path $MediaDrive.Name -Recurse -Filter "$FileSearch.ps1" -ErrorAction SilentlyContinue
         }
 
@@ -137,7 +188,7 @@ function Get-NetworkPrefix {
 
 # If Domain Join..
 # ------------------------------------------------------------
-$ServerPrefix = Get-NetworkPrefix $Address
+$ServerPrefix = Get-NetworkPrefix $IPAddress
 $DnsPrefixes = $DNSServers | ForEach-Object { Get-NetworkPrefix $_ } | Sort-Object -Unique
 
 if ($DnsPrefixes -contains $ServerPrefix) {
@@ -162,16 +213,22 @@ if ($DnsPrefixes -contains $ServerPrefix) {
         $Credentials = New-Object System.Management.Automation.PSCredential ($Username, $CryptPassword)    
     }
 
-    if ($null -ne $MachineOU) {
+    if (!([string]::IsNullOrEmpty($MachineOU))) {
         $DomainDN = (($DomainName -split("\.")) | ForEach-Object { "DC=$($_)" }) -join(",")
         $JoinMachineOU = @($MachineOU ,$DomainDN) -Join(",")
-
-        Add-Computer -NewName $HostName -DomainName $DomainName -Credential $Credentials -OUPath $JoinMachineOU -Restart
-
+        if ($HostName -ne $env:COMPUTERNAME) {
+            Add-Computer -NewName $HostName -DomainName $DomainName -Credential $Credentials -OUPath $JoinMachineOU -Restart
+        }
+        else {
+            Add-Computer -DomainName $DomainName -Credential $Credentials -OUPath $JoinMachineOU -Restart
+        }
     } else {
-
-        Add-Computer -NewName $HostName -DomainName $DomainName -Credential $Credentials -Restart
-
+        if ($HostName -ne $env:COMPUTERNAME) {
+            Add-Computer -NewName $HostName -DomainName $DomainName -Credential $Credentials -Restart
+        }
+        else {
+            Add-Computer -DomainName $DomainName -Credential $Credentials -Restart
+        }
     }
 
 } else {
@@ -181,5 +238,6 @@ if ($DnsPrefixes -contains $ServerPrefix) {
     # First Domain Controller or Workgroup
     # ------------------------------------------------------------
     Rename-Computer -NewName $HostName -Restart
-
+    #$global:HDebug = $true
+    #Restart-HYDHandover
 }
