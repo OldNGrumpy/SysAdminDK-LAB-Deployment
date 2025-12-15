@@ -13,13 +13,11 @@ function Upload-PVEISO {
         [string]$IsoPath
     )
 
-
     # I only use this function to upload Configuration ISOs, why the size limit.
     # ------------------------------------------------------------
     if ($(Get-Item $IsoPath).Length -gt (100MB)) {
         throw "ISO file is too large, max allowed size is 100MB."
     }
-
 
     $FileName = [System.IO.Path]::GetFileName($IsoPath)
     $Boundary = [System.Guid]::NewGuid().ToString()
@@ -43,22 +41,35 @@ function Upload-PVEISO {
     [Array]::Copy($FileBytes, 0, $AllBytes, $BodyBytes.Length, $FileBytes.Length)
     [Array]::Copy($PostBytes, 0, $AllBytes, $BodyBytes.Length + $FileBytes.Length, $PostBytes.Length)
 
-    $Request = [System.Net.HttpWebRequest]::Create("$ProxmoxAPI/nodes/$Node/storage/$Storage/upload")
-    $Request.Method = "POST"
-    $Request.Headers.Add("Authorization", $Headers["Authorization"])
-    $Request.Accept = "application/json"
-    $Request.ContentType = "multipart/form-data; boundary=$Boundary"
-    $Request.ContentLength = $AllBytes.Length
+    # Create HttpClientHandler that ignores SSL certificate errors
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $handler.ServerCertificateCustomValidationCallback = [System.Net.Http.HttpClientHandler]::DangerousAcceptAnyServerCertificateValidator
 
-    $ReqStream = $Request.GetRequestStream()
-    $ReqStream.Write($AllBytes, 0, $AllBytes.Length)
-    $ReqStream.Close()
+    $httpClient = $null
 
-    $Response = $Request.GetResponse()
-    $SR = New-Object System.IO.StreamReader($Response.GetResponseStream())
-    $Result = $SR.ReadToEnd()
-    $SR.Close()
-    $Response.Close()
+    try {
+        $httpClient = [System.Net.Http.HttpClient]::new($handler)
+        # Use TryAddWithoutValidation to bypass header format validation
+        $httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $Headers["Authorization"]) | Out-Null
 
-    return $Result
+        $content = [System.Net.Http.ByteArrayContent]::new($AllBytes)
+        $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("multipart/form-data; boundary=$Boundary")
+
+        $url = "$ProxmoxAPI/nodes/$Node/storage/$Storage/upload"
+        $response = $httpClient.PostAsync($url, $content).GetAwaiter().GetResult()
+
+        if (-not $response.IsSuccessStatusCode) {
+            throw "HTTP $($response.StatusCode): $($response.ReasonPhrase)"
+        }
+
+        $result = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        return $result
+    }
+    catch {
+        throw "Failed to upload ISO to Proxmox: $($_.Exception.Message)"
+    }
+    finally {
+        if ($httpClient) { $httpClient.Dispose() }
+        if ($handler) { $handler.Dispose() }
+    }
 }
