@@ -26,16 +26,17 @@
     And Extract/Copy content from the ISO drives.
 
 #>
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory=$true)]
+    [string]
+    $VMName,
+    [Parameter(Mandatory=$false)]
+    [string]
+    $RootPath = "D:\Proxmox Scripts"
+)
 
 
-# Name of the "Master" VM
-# ------------------------------------------------------------
-$VMName = "DeployMaster"
-
-
-# Path to PVE scripts and Functions.
-# ------------------------------------------------------------
-$RootPath = "D:\Proxmox Scripts"
 
 
 # Import PVE modules
