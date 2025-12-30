@@ -30,13 +30,11 @@
 param (
     [Parameter(Mandatory=$true)]
     [string]
-    $VMName,
+    $VMName = "Deployment-Server",
     [Parameter(Mandatory=$false)]
     [string]
     $RootPath = "D:\Proxmox Scripts"
 )
-
-
 
 
 # Import PVE modules
