@@ -16,15 +16,26 @@
     [switch]$Start
 )
 
-
-$ProductKey     = "N6W6X-H4P77-RJYTG-W77HT-RRKXT"
-
-
+function Get-ScriptDirectory {
+    $dir = ""
+    if ($psise) {
+        $dir = Split-Path $psise.CurrentFile.FullPath
+    }
+    else {
+        $dir = $global:PSScriptRoot
+    }
+    if (-not $dir) {
+        $dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('.\')
+    }
+    return $dir   
+}
 
 # Path to PVE scripts and Functions.
 # ------------------------------------------------------------
-$RootPath       = "D:\Deployment\Scripts\Proxmox"
-$ModulesPath    = "D:\Deployment\Scripts\Functions"
+$RootPath       = Get-ScriptDirectory
+$ModulesPath    = "$RootPath\Functions"
+
+$ProductKey     = "N6W6X-H4P77-RJYTG-W77HT-RRKXT"
 
 
 <#
@@ -182,7 +193,7 @@ If ($MasterServer.Node -ne $SelectedVMTemplate.Node) {
 
 #>
 
-$AllVMIDs = (Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/cluster/resources?type=vm" -Headers $PVEConnect.Headers -Verbose:$false).data | Select-Object vmid, name
+$AllVMIDs = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/cluster/resources?type=vm" -Headers $PVEConnect.Headers -Verbose:$false).data | Select-Object vmid, name
 if ($AllVMIDs.vmid -contains $VMID) {
     throw "VMID already in use."
 
@@ -195,7 +206,7 @@ Write-Verbose "Proxmox: Create new VM: $VMName"
 
 # Clone Template
 # ------------------------------------------------------------
-$VMCreate = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$($SelectedVMTemplate.VmID)/clone" -Body "newid=$VMID&name=$NewVMFQDN&full=1&storage=$($PVELocation.storage)" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
+$VMCreate = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$($SelectedVMTemplate.VmID)/clone" -Body "newid=$VMID&name=$NewVMFQDN&full=1&storage=$($PVELocation.storage)" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
 
 
 # Create AutoUnattend media, and add required scripts.
@@ -281,7 +292,7 @@ New-ISOFile -source "D:\$NewVMFQDN" -destinationIso "D:\ISOfiles\template\iso\$N
 
 
 # Upload ISO.
-#$ISOStorage = ((Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage" -Headers $PVEConnect.Headers -Verbose:$false).data | Where {$_.content -like "*iso*" -and $_.type -eq "dir"}).storage
+#$ISOStorage = ((Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage" -Headers $PVEConnect.Headers -Verbose:$false).data | Where {$_.content -like "*iso*" -and $_.type -eq "dir"}).storage
 #$null = Upload-PVEISO -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $($PVEConnect.Headers) -Node $($PVELocation.name) -Storage $ISOStorage -IsoPath "D:\$NewVMFQDN.iso"
 
 
@@ -299,7 +310,7 @@ $null = Invoke-RestMethod -Method POST -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVEL
 
 # Modify Boot sequence.
 $Body = "boot=$([uri]::EscapeDataString("order=scsi0"))"
-$null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $Body -Method POST -Headers $PVEConnect.Headers -Verbose:$false
+$null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $Body -Method POST -Headers $PVEConnect.Headers -Verbose:$false
 
 
 <# 
@@ -312,7 +323,7 @@ $null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)
 # Get VM Configuration prior to updates / changes
 # ------------------------------------------------------------
 Write-Verbose "Proxmox: Change VM configuration"
-$VMStatus = (Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Headers $PVEConnect.Headers -Verbose:$false).data
+$VMStatus = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Headers $PVEConnect.Headers -Verbose:$false).data
 
 
 # Set VLan if needed
@@ -330,7 +341,7 @@ if ($null -ne $VLan) {
     }
     $Body = $Body -replace("&$","")
     
-    $null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $Body -Method Put -Headers $PVEConnect.Headers -Verbose:$false
+    $null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $Body -Method Put -Headers $PVEConnect.Headers -Verbose:$false
 }
 
 
@@ -341,7 +352,7 @@ if ($VMStatus.cores -ne $VMCores) {
     Write-Verbose "Proxmox: Update CPU Cores"
 
     $body = "cores=$VMCores"
-    $null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $body -Method Post -Headers $PVEConnect.Headers -Verbose:$false
+    $null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $body -Method Post -Headers $PVEConnect.Headers -Verbose:$false
 
 }
 
@@ -351,7 +362,7 @@ if ([math]::Round($($VMMemory * 1KB)) -ne $VMStatus.memory) {
     Write-Verbose "Proxmox: Update Memory size"
 
     $body = "memory=$($VMMemory*1KB)"
-    $null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $body -Method Post -Headers $PVEConnect.Headers -Verbose:$false
+    $null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/config" -Body $body -Method Post -Headers $PVEConnect.Headers -Verbose:$false
 
 }
 
@@ -365,7 +376,7 @@ if ($SizeDiff -gt 0) {
     Write-Verbose "Proxmox: Update Disk size"
 
     $body = "disk=$($CurrentOSDisk.name)&size=$($OSDisk.ToLower().replace("gb","G"))"
-    $null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/resize" -Body $body -Method Put -Headers $PVEConnect.Headers -Verbose:$false
+    $null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/resize" -Body $body -Method Put -Headers $PVEConnect.Headers -Verbose:$false
 
 }
 
@@ -413,7 +424,7 @@ if ($VmDomain -ne "Workgroup") {
 # Start new server
 # ------------------------------------------------------------
 if ($Start) {
-    $null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/status/start" -Headers $PVEConnect.Headers -Method POST -Verbose:$false
+    $null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/status/start" -Headers $PVEConnect.Headers -Method POST -Verbose:$false
 }
 
 Write-Verbose "Script end: $(Get-Date)"

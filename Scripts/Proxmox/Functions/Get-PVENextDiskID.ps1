@@ -15,7 +15,7 @@ Function Get-PVENextDiskID {
 
     # Get VM Status
     # ------------------------------------------------------------
-    $VMStatus = (Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$Node/qemu/$VMID/config" -Headers $Headers -Verbose:$false).data
+    $VMStatus = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$Node/qemu/$VMID/config" -Headers $Headers -Verbose:$false).data
 
 
     if ($DiskType -eq "") {

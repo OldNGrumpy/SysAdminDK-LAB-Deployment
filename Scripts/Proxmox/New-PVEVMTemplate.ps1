@@ -6,6 +6,19 @@
     See Create-DeploymentServer.ps1.
 
 #>
+function Get-ScriptDirectory {
+    $dir = ""
+    if ($psise) {
+        $dir = Split-Path $psise.CurrentFile.FullPath
+    }
+    else {
+        $dir = $global:PSScriptRoot
+    }
+    if (-not $dir) {
+        $dir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('.\')
+    }
+    return $dir   
+}
 
 # Do Not Just Execute.
 # ------------------------------------------------------------
@@ -14,7 +27,7 @@ break
 
 # Path to PVE scripts and Functions.
 # ------------------------------------------------------------
-$RootPath = "D:\Deployment\Scripts\Proxmox"
+$RootPath = Get-ScriptDirectory
 
 
 # Import PVE modules
@@ -52,7 +65,7 @@ $PVELocation = Get-PVELocation -ProxmoxAPI $PVEConnect.PVEAPI -Headers $PVEConne
 $VMName = "2025-Template"
 $Memory = 8*1024
 $Cores = 4
-$OSDisk = 50
+$OSDisk = 80
 $TemplateID = Get-PVENextID -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $($PVEConnect.Headers)
 
 
@@ -80,7 +93,7 @@ $Body += "&ide2=$([uri]::EscapeDataString("none,media=cdrom"))"
 
 # Create the Template VM
 # ------------------------------------------------------------
-$VMCreate = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($MasterID.Node)/qemu/" -Body $Body -Method POST -Headers $($PVEConnect.Headers) -Verbose:$false
+$VMCreate = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($MasterID.Node)/qemu/" -Body $Body -Method POST -Headers $($PVEConnect.Headers) -Verbose:$false
 Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($MasterID.Node) -taskid $VMCreate.data
 
 
@@ -224,9 +237,9 @@ $OrgDiskID = Reassign-PVEOwner -ProxmoxAPI $PVEConnect.PVEAPI -Headers $PVEConne
 # Add virtio0 to boot..
 # ------------------------------------------------------------
 $Body = "boot=$([uri]::EscapeDataString("order=$OrgDiskID"))"
-$null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($MasterID.Node)/qemu/$TemplateID/config" -Body $Body -Method POST -Headers $($PVEConnect.Headers)
+$null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($MasterID.Node)/qemu/$TemplateID/config" -Body $Body -Method POST -Headers $($PVEConnect.Headers)
 
 
 # Convert TO template
 # ------------------------------------------------------------
-$null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($MasterID.Node)/qemu/$TemplateID/template" -Method POST -Headers $($PVEConnect.Headers)
+$null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($MasterID.Node)/qemu/$TemplateID/template" -Method POST -Headers $($PVEConnect.Headers)

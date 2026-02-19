@@ -20,7 +20,7 @@ function Get-PVELocation {
     Try {
         $NodesData = @()
 
-        $NodesQuery = (Invoke-RestMethod -Uri "$ProxmoxAPI/cluster/status" -Headers $Headers -Verbose:$false).data | Where {$_.type -eq "node"}
+        $NodesQuery = (Invoke-MWxRestMethod -Uri "$ProxmoxAPI/cluster/status" -Method Get -Headers $Headers -Verbose:$false).data | Where-Object {$_.type -eq "node"}
         
         foreach ($Node in $NodesQuery) {
             $NodeDataArray = @(
@@ -42,7 +42,7 @@ function Get-PVELocation {
         $StorageData = @()
 
         foreach ($Node in $NodesData) {
-            $NodeStorageQuery = (Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$($Node.name)/storage" -Headers $Headers -Verbose:$false).data | Where {$_.content -like "*images*"}
+            $NodeStorageQuery = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$($Node.name)/storage" -Headers $Headers -Verbose:$false).data | Where {$_.content -like "*images*"}
 
             foreach ($Storage in $NodeStorageQuery) {
                 $NodeStorageArray = @(
@@ -74,7 +74,7 @@ function Get-PVELocation {
 
         foreach ($Node in $NodesData) {
 
-            $NodeBridgeQuery = ((Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$($Node.name)/network" -Method Get -Headers $Headers -Verbose:$false).data | where {$_.Type -eq "bridge"}) | Select-Object iface,address,cidr
+            $NodeBridgeQuery = ((Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$($Node.name)/network" -Method Get -Headers $Headers -Verbose:$false).data | where {$_.Type -eq "bridge"}) | Select-Object iface,address,cidr
 
             foreach ($Bridge in $NodeBridgeQuery) {
                 $NodeBridgeArray = @(

@@ -207,7 +207,7 @@ if ((gwmi win32_computersystem).DomainRole -eq 5) {
         # Get MY Install MSFT Baselines script.
         # --------------------------------------------------------------------------------------------------
         $Uri = "https://api.github.com/repos/SysAdminDk/MS-Infrastructure/contents/ADDS%20Scripts/Security%20Baselines/MSFT%20Baseline?ref=$Branch"
-        $Files = Invoke-RestMethod -Uri $Uri -Headers @{ "User-Agent" = "Powershell" }
+        $Files = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri $Uri -Headers @{ "User-Agent" = "Powershell" }
 
         $Files | % { Invoke-WebRequest -Uri $_.download_url -OutFile "$DownloadFolder\$($_.Name)" }
 
@@ -215,7 +215,7 @@ if ((gwmi win32_computersystem).DomainRole -eq 5) {
         # Get MY Add WMI Filters script.
         # --------------------------------------------------------------------------------------------------
         $Uri = "https://api.github.com/repos/SysAdminDk/MS-Infrastructure/contents/ADDS%20Scripts/Security%20Baselines/WMI-Filters?ref=$Branch"
-        $Files = Invoke-RestMethod -Uri $Uri -Headers @{ "User-Agent" = "Powershell" }
+        $Files = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri $Uri -Headers @{ "User-Agent" = "Powershell" }
 
         $Files | % { Invoke-WebRequest -Uri $_.download_url -OutFile "$DownloadFolder\$($_.Name)" }
 

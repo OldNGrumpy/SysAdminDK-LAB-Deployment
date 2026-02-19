@@ -93,7 +93,7 @@ foreach ($VM in $VMConfig) {
 
     # Create the Template VM
     # ------------------------------------------------------------
-    $VMCreate = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/" -Body $Body -Method POST -Headers $($PVEConnect.Headers)
+    $VMCreate = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/" -Body $Body -Method POST -Headers $($PVEConnect.Headers)
     Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $VMCreate.data
 
 
@@ -101,7 +101,7 @@ foreach ($VM in $VMConfig) {
     # ------------------------------------------------------------
     $DiskId = Get-PVENextDiskID -ProxmoxAPI $PVEConnect.PVEAPI -Headers $PVEConnect.Headers -Node $($PVELocation.Name) -VMID $VMID
         
-    $DiskCreate = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body "$DiskId=$([uri]::EscapeDataString("$($PVELocation.Storage):$($VM.osdrive),ssd=1"))" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
+    $DiskCreate = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body "$DiskId=$([uri]::EscapeDataString("$($PVELocation.Storage):$($VM.osdrive),ssd=1"))" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
     Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $DiskCreate.data
 
 
@@ -117,32 +117,32 @@ foreach ($VM in $VMConfig) {
             $DiskId = Get-PVENextDiskID -ProxmoxAPI $PVEConnect.PVEAPI -Headers $PVEConnect.Headers -Node $($PVELocation.Name) -VMID $VMID
         }
         
-        $DiskCreate = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body "$DiskId=$([uri]::EscapeDataString("$($PVELocation.Storage):$($drive)"))" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
+        $DiskCreate = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body "$DiskId=$([uri]::EscapeDataString("$($PVELocation.Storage):$($drive)"))" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
         Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $DiskCreate.data
     }
 
 
     # Add Disk Serial number.
     # ------------------------------------------------------------
-    $VMStatus = (Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$($VMID)/config" -Headers $($PVEConnect.Headers) -Verbose:$false).data
+    $VMStatus = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$($VMID)/config" -Headers $($PVEConnect.Headers) -Verbose:$false).data
     $DiskData = $VMStatus.PSObject.Properties | Where {$_.name -match 'scsi\d+$|sata\d+$' -and $_.value -notlike "*serial*"}
    
     $DiskData | ForEach-Object {
         $Body = "$($_.name)=$([uri]::EscapeDataString("$($_.value),serial=$(($($_.value) -split(":|,"))[1])"))"
-        $null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body $Body -Method Post -Headers $PVEConnect.Headers -Verbose:$false
+        $null = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body $Body -Method Post -Headers $PVEConnect.Headers -Verbose:$false
     }
 
 
     # Add Boot ISO.
     # ------------------------------------------------------------
-    $Storage = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/storage" -Method GET -Headers $PVEConnect.Headers
+    $Storage = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/storage" -Method GET -Headers $PVEConnect.Headers
     $Storage = $Storage.data | where {$_.content -like "*iso*" -and $_.type -eq "cifs"}
 
-    $ISOStorage = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/storage/$($Storage.storage)/content" -Method GET -Headers $PVEConnect.Headers
+    $ISOStorage = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/storage/$($Storage.storage)/content" -Method GET -Headers $PVEConnect.Headers
     $ISOFile = $ISOStorage.data | Where {$_.volid -like "*$(($VM.Node).Substring(0,($VM.Node).Length-3))*"}
 
     if ($ISOFile) {
-        $ISOAdd = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body "ide2=$([uri]::EscapeDataString("$($ISOFile.volid),media=cdrom"))" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
+        $ISOAdd = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/$VMID/config" -Body "ide2=$([uri]::EscapeDataString("$($ISOFile.volid),media=cdrom"))" -Method Post -Headers $PVEConnect.Headers -Verbose:$false
         Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $ISOAdd.data
     }
 
@@ -153,9 +153,9 @@ foreach ($VM in $VMConfig) {
 # ------------------------------------------------------------
 foreach ($Node in $VMConfig) {
 
-    $VMID = ((Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/cluster/resources?type=vm" -Headers $PVEConnect.Headers -Verbose:$false).data | Where {$_.name -eq $node.Node})
+    $VMID = ((Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/cluster/resources?type=vm" -Headers $PVEConnect.Headers -Verbose:$false).data | Where {$_.name -eq $node.Node})
     if ($VMID.vmid) {
-        $VMStatus = (Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($VMID.node)/qemu/$($VMID.vmid)/config" -Headers $($PVEConnect.Headers) -Verbose:$false).data
+        $VMStatus = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($VMID.node)/qemu/$($VMID.vmid)/config" -Headers $($PVEConnect.Headers) -Verbose:$false).data
         $Interfaces = $VMStatus.PSObject.Properties | Where {$_.name -like "net*"} | Sort-Object -Property Name
         $Interfaces = $Interfaces | ForEach-Object { $_.Value -split("=|,") | Select-Object -Skip 1 -First 1 }
 

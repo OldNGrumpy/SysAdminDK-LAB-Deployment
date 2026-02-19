@@ -29,7 +29,7 @@ Function Move-PVEVM {
 
 
     if ($SourceNode -eq $SourceNode) {
-        $VMStatus = (Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$VMID/config" -Headers $Headers -Verbose:$false).data
+        $VMStatus = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$VMID/config" -Headers $Headers -Verbose:$false).data
         $VMDisks = $VMStatus.PSObject.Properties | Where-Object { $_.Name -match "scsi|sata|virtio|tpmstate|efidisk" -and $_.Value -like "*$VMID*"}
         $VMDisks | ForEach-Object {
             $DiskId = $_.value
@@ -42,7 +42,7 @@ Function Move-PVEVM {
                 $Body += "&disk=$Controller"
                 $Body += "&storage=$Targetstorage"
                 $Body += "&delete=1"
-                $MoveDisk = Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$VMID/move_disk" -Body $Body -Method Post -Headers $Headers -Verbose:$false
+                $MoveDisk = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$VMID/move_disk" -Body $Body -Method Post -Headers $Headers -Verbose:$false
                 
                 # We have to wait, multiple locks on configuration is not posible.
                 Start-PVEWait -ProxmoxAPI $ProxmoxAPI -Headers $Headers -node $SourceNode -taskid $MoveDisk.data
@@ -57,7 +57,7 @@ Function Move-PVEVM {
         if ($Targetstorage) {
             $Body += "&targetstorage=$Targetstorage"
         }
-        $MoveStatus = Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$VMID/migrate" -Body $body -Method Post -Headers $Headers -Verbose:$false
+        $MoveStatus = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$VMID/migrate" -Body $body -Method Post -Headers $Headers -Verbose:$false
 
     }
 

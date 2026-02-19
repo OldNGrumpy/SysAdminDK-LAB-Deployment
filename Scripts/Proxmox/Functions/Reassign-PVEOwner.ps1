@@ -21,11 +21,11 @@ function Reassign-PVEOwner {
     # Get Drive to move..
     # ------------------------------------------------------------
     if ( ($null -eq $SourceDisk) -or ($SourceDisk -eq "First") ) {
-        $SourceVmData = (Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/config" -Headers $Headers -Verbose:$false).data
+        $SourceVmData = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/config" -Headers $Headers -Verbose:$false).data
         $SourceVMDisk = $SourceVmData.PSObject.Properties | Where-Object { $_.Name -match $DiskType -and $_.Value -like "*$SourceVM*"} | Sort-Object -Property Name | Select-Object -First 1
 
     } else {
-        $SourceVmData = (Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/config" -Headers $Headers -Verbose:$false).data
+        $SourceVmData = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/config" -Headers $Headers -Verbose:$false).data
         $SourceVMDisk = $SourceVmData.PSObject.Properties | Where-Object { $_.Name -eq $SourceDisk -and $_.Value -like "*$SourceVM*"}
     }
     
@@ -33,14 +33,14 @@ function Reassign-PVEOwner {
     # Detach disk from VM
     # ------------------------------------------------------------
     $Body = "delete=$($SourceVMDisk.name)"
-    $UnMount = Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/config" -Body $Body -Method Post -Headers $Headers -Verbose:$false
+    $UnMount = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/config" -Body $Body -Method Post -Headers $Headers -Verbose:$false
 
     Start-PVEWait -ProxmoxAPI $ProxmoxAPI -Headers $Headers -node $($MasterID.Node) -taskid $UnMount.data
     
 
     # Get Target data.
     # ------------------------------------------------------------
-    $TargetVMData = (Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$TargetVM/config" -Method Get -Headers $Headers -Verbose:$false).data
+    $TargetVMData = (Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$TargetVM/config" -Method Get -Headers $Headers -Verbose:$false).data
 
 
     # Find Target Disk Number to use
@@ -54,7 +54,7 @@ function Reassign-PVEOwner {
         $Body += "&target-vmid=$TargetVM"
         $Body += "&disk=unused0"
         $Body += "&target-disk=$NextVMDisk"
-        $MoveDisk = Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/move_disk" -Body $Body -Method Post -Headers $Headers -Verbose:$false
+        $MoveDisk = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/move_disk" -Body $Body -Method Post -Headers $Headers -Verbose:$false
 
 
     } else {
@@ -70,7 +70,7 @@ function Reassign-PVEOwner {
         $Body += "&target-vmid=$TargetVM"
         $Body += "&disk=unused0"
         $Body += "&target-disk=$TargetDisk"
-        $MoveDisk = Invoke-RestMethod -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/move_disk" -Body $Body -Method Post -Headers $Headers -Verbose:$false
+        $MoveDisk = Invoke-RestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$ProxmoxAPI/nodes/$SourceNode/qemu/$SourceVM/move_disk" -Body $Body -Method Post -Headers $Headers -Verbose:$false
 
     }
 

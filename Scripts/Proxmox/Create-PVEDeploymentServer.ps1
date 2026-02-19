@@ -28,20 +28,27 @@
 #>
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory=$true)]
-    [string]
-    $VMName = "Deployment-Server",
     [Parameter(Mandatory=$false)]
     [string]
-    $RootPath = "D:\Proxmox Scripts"
+    $VMName = "DEPL00",
+    [Parameter(Mandatory=$false)]
+    [string]
+    $RootPath = "C:\Mats\GitHub\SysAdminDK-LAB-Deployment\Scripts\Proxmox",
+    [string]$IsoFileName = "en-us_windows_server_2025_updated_jan_2026_x64_dvd_5cf90374.iso" 
 )
 
+Write-Verbose "Using INCLUDES from: $(Split-Path -Path $RootPath -Parent)\Includes"
 
 # Import PVE modules
 # ------------------------------------------------------------
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force -Confirm:$false
 Get-ChildItem -Path "$RootPath\Functions" | ForEach-Object { Import-Module -Name $_.FullName -Force }
 
+# dot-source includes
+Get-ChildItem -Path "$(Split-Path -Path $RootPath -Parent)\Includes" | ForEach-Object {
+    Write-Verbose "Dot-sourcing $($_.FullName)"
+    . $_.FullName
+}
 
 # Connect to PVE Cluster
 # ------------------------------------------------------------
@@ -52,18 +59,12 @@ $PVEConnect = PVE-Connect -Authkey "$($PVESecret.User)!$($PVESecret.TokenID)=$($
 # Get information required to create the template (VM)
 # ------------------------------------------------------------
 $PVELocation = Get-PVELocation -ProxmoxAPI $PVEConnect.PVEAPI -Headers $PVEConnect.Headers -IncludeNode $MasterID.Node
-$ISOStorage = ((Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage" -Headers $($PVEConnect.Headers)).data | Where {$_.content -like "*iso*"}).storage
+$MasterID = Get-PVEServerID -ProxmoxAPI $PVEConnect.PVEAPI -Headers $PVEConnect.Headers -ServerName "LAB-Deploy"
+$ISOStorage = ((Invoke-MWxRestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage" -Headers $($PVEConnect.Headers) -Method Get).data | Where {$_.content -like "*iso*"}).storage
 
-
-# Download Windows Server 2022 EVAL Iso
-# ------------------------------------------------------------
-$DownloadBody = "content=iso"
-$DownloadBody += "&node=$($PVELocation.name)"
-$DownloadBody += "&url=$([uri]::EscapeDataString("https://software-static.download.prss.microsoft.com/sg/download/888969d5-f34g-4e03-ac9d-1f9786c66749/SERVER_EVAL_x64FRE_en-us.iso"))"
-$DownloadBody += "&filename=$([uri]::EscapeDataString("Server2022.iso"))"
-
-$2022Result = Invoke-RestMethod -Method POST -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage/$ISOStorage/download-url" -Headers $($PVEConnect.Headers) -Body $DownloadBody
-
+if ($ISOStorage.Count -gt 1) {
+    $ISOStorage = $ISOStorage | Out-GridView -Title "Select ISOStorage for the new VM" -OutputMode Single
+}
 
 # Download Windows Server 2025 EVAL Iso
 # ------------------------------------------------------------
@@ -72,26 +73,23 @@ $DownloadBody += "&node=$($PVELocation.name)"
 $DownloadBody += "&url=$([uri]::EscapeDataString("https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/26100.1742.240906-0331.ge_release_svc_refresh_SERVER_EVAL_x64FRE_en-us.iso"))"
 $DownloadBody += "&filename=$([uri]::EscapeDataString("Server2025.iso"))"
 
-$2025Result = Invoke-RestMethod -Method POST -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage/$ISOStorage/download-url" -Headers $($PVEConnect.Headers) -Body $DownloadBody
+#$2025Result = Invoke-MWxRestMethod -Method POST -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage/$ISOStorage/download-url" -Headers $($PVEConnect.Headers) -Body $DownloadBody
 
 
 # Download VirtIO Windows Drivers.
 # ------------------------------------------------------------
-$DownloadBody = "content=iso"
 $DownloadBody += "&node=$($PVELocation.name)"
 $DownloadBody += "&url=$([uri]::EscapeDataString("https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso"))"
 $DownloadBody += "&filename=$([uri]::EscapeDataString("virtio-win.iso"))"
 
-$DriverResult = Invoke-RestMethod -Method POST -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage/$ISOStorage/download-url" -Headers $($PVEConnect.Headers) -Body $DownloadBody
+#$DriverResult = Invoke-RestMethod -Method POST -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/storage/$ISOStorage/download-url" -Headers $($PVEConnect.Headers) -Body $DownloadBody
 
 
 # Wait all 3 downloads.
 # ------------------------------------------------------------
-Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $2022Result.data
-Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $2025Result.data
-Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $DriverResult.data
-
-
+#Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $2022Result.data
+#Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $2025Result.data
+#Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $DriverResult.data
 
 # Next avalible High VMID
 # ------------------------------------------------------------
@@ -117,16 +115,17 @@ $Body += "&balloon=2048"
 $Body += "&cores=4"
 $Body += "&scsi0=$([uri]::EscapeDataString("$($PVELocation.storage):50,ssd=on,format=raw"))"
 $Body += "&scsi1=$([uri]::EscapeDataString("$($PVELocation.storage):100,format=raw"))"
-$Body += "&ide0=$([uri]::EscapeDataString("local:iso/virtio-win.iso,media=cdrom"))"
-$Body += "&ide2=$([uri]::EscapeDataString("local:iso/Server2025.iso,media=cdrom"))"
+$Body += "&ide0=$([uri]::EscapeDataString("$($ISOStorage):iso/virtio-win.iso,media=cdrom"))"
+$Body += "&ide2=$([uri]::EscapeDataString("$($ISOStorage):iso/$IsoFileName,media=cdrom"))"
 
 
 # Create the Template VM
 # ------------------------------------------------------------
-$VMCreate = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/" -Body $Body -Method POST -Headers $($PVEConnect.Headers)
+$VMCreate = Invoke-MWxRestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.Name)/qemu/" -Body $Body -Method POST -Headers $($PVEConnect.Headers)
+Pause
 Start-PVEWait -ProxmoxAPI $($PVEConnect.PVEAPI) -Headers $PVEConnect.Headers -node $($PVELocation.Name) -taskid $VMCreate.data
 
 
 # Start new server
 # ------------------------------------------------------------
-$null = Invoke-RestMethod -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/status/start" -Headers $($PVEConnect.Headers) -Method POST
+$null = Invoke-MWxRestMethod -SkipHeaderValidation -SkipCertificateCheck -Uri "$($PVEConnect.PVEAPI)/nodes/$($PVELocation.name)/qemu/$VMID/status/start" -Headers $($PVEConnect.Headers) -Method POST
